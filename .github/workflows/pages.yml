@@ -34,6 +34,14 @@ jobs:
         env:
           BROWSER_CHANNEL: chromium
           P2P_CROSS_BROWSER: "1"
+      - name: Save browser diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: browser-diagnostics
+          path: test-results/p2p
+          if-no-files-found: ignore
+          retention-days: 7
       - uses: actions/upload-pages-artifact@v5.0.0
         if: github.event_name != 'pull_request'
         with:

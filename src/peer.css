@@ -39,6 +39,10 @@
   gap: 12px;
   min-width: 0;
 }
+/* Keep the hit target still when swapping invitation panels under the pointer. */
+.peer-lobby .primary-button:is(:hover, :active):not(:disabled) {
+  translate: none;
+}
 .peer-lobby .connection-status {
   margin: 0;
   font-size: 12px;
