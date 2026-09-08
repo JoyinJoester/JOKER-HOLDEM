@@ -1,0 +1,41 @@
+{
+  "name": "joker-holdem",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server/index.ts --dev",
+    "dev:web": "vite --host 0.0.0.0 --port 5179",
+    "build": "tsc -b && vite build",
+    "start": "tsx server/index.ts",
+    "preview": "tsx server/index.ts",
+    "preview:web": "vite preview --host 127.0.0.1",
+    "test": "vitest run",
+    "test:browser": "npm run test:browser:p2p && npm run test:browser:holdem && npm run test:browser:balatro && npm run test:browser:scoring && npm run test:browser:viewport",
+    "test:browser:p2p": "node scripts/p2p-browser-test.mjs",
+    "test:browser:holdem": "node scripts/browser-test.mjs && node --import tsx scripts/modes-browser-test.mjs",
+    "test:browser:modes": "node --import tsx scripts/modes-browser-test.mjs",
+    "test:browser:balatro": "node --import tsx scripts/balatro-browser-test.mjs",
+    "test:browser:scoring": "node --import tsx scripts/scoring-browser-test.mjs",
+    "test:browser:viewport": "node --import tsx scripts/viewport-browser-test.mjs"
+  },
+  "dependencies": {
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
+    "express": "^4.21.2",
+    "tsx": "^4.20.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.10",
+    "@types/node": "^22.18.0",
+    "@types/express": "^4.17.21",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^4.7.0",
+    "playwright": "^1.55.0",
+    "typescript": "~5.9.2",
+    "vite": "^6.1.0",
+    "vitest": "^3.2.4"
+  }
+}

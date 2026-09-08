@@ -1,0 +1,404 @@
+/* Scoring uses the existing table space at every viewport size. */
+.rg-app
+  .rg-layout[data-phase="playing"]
+  .rg-inventory:not(:has(.rg-inventory-card))
+  .rg-empty-slot {
+  max-height: clamp(44px, 9vh, 80px);
+}
+@media (min-width: 601px) and (min-height: 501px) {
+  .rg-app .rg-layout[data-phase="playing"] .rg-inventory {
+    --inventory-card: min(78px, 9vh);
+  }
+}
+@media (min-width: 601px) and (max-width: 899px) and (min-height: 501px) {
+  .rg-app .rg-layout[data-phase="playing"] .rg-inventory {
+    --inventory-card: min(68px, 9vh);
+  }
+}
+@media (max-height: 500px) and (min-width: 501px) {
+  .rg-app .rg-layout[data-phase="playing"] .rg-inventory {
+    --inventory-card: 30px;
+  }
+  .rg-app .rg-layout[data-scoring="true"] .rg-hand-actions > span {
+    display: none;
+  }
+}
+.rg-app .rg-last-hand {
+  container: rg-played / size;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  display: block;
+  padding: 0;
+}
+.rg-played-content {
+  --result-width: clamp(104px, 21cqw, 180px);
+  --result-gap: clamp(12px, 3cqw, 32px);
+  --played-gap: clamp(3px, 1cqw, 9px);
+  --played-card: min(
+    112px,
+    calc((100cqh - 16px) / 1.5),
+    calc(
+      (
+          100cqw - var(--result-width) - var(--result-gap) -
+            (var(--played-count) - 1) * var(--played-gap)
+        ) /
+        var(--played-count)
+    )
+  );
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--result-gap);
+}
+.rg-app .rg-last-cards {
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--played-gap);
+}
+.rg-app .rg-last-cards > div {
+  width: var(--played-card);
+  flex: 0 0 auto;
+}
+.rg-app .rg-last-result {
+  min-width: 0;
+  max-width: var(--result-width);
+  flex: 0 1 var(--result-width);
+}
+.rg-app .rg-last-result > span {
+  font-size: clamp(12px, 2.3cqw, 15px);
+}
+.rg-app .rg-last-result > strong {
+  margin: 7px 0;
+  font-size: clamp(22px, 16cqh, 38px);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.rg-app .rg-last-result button {
+  min-height: 24px;
+  font-size: 10px;
+}
+
+.rg-trigger-face {
+  width: 100%;
+  min-width: 0;
+  position: relative;
+  border-radius: 4px;
+}
+.rg-triggering {
+  animation: rg-effect-bump 300ms ease-out both;
+}
+.rg-triggering::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border: 2px solid #f5d78e;
+  border-radius: 5px;
+  box-shadow: 0 0 12px #e9b34c70;
+  pointer-events: none;
+}
+.rg-layout[data-scoring="true"] .rg-hand-card:disabled,
+.rg-layout[data-scoring="true"] .rg-inventory-card:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.rg-layout[data-scoring="true"] .rg-inventory-card.rg-disabled-card {
+  opacity: 0.5;
+}
+.rg-layout[data-scoring="true"] .rg-selected-note {
+  display: none;
+}
+.rg-formula strong {
+  container-type: inline-size;
+}
+.rg-formula strong > [data-score-value] {
+  white-space: nowrap;
+  font-size: min(1em, calc(100cqw / var(--score-digits, 1)));
+}
+.rg-effect-active {
+  z-index: 12 !important;
+}
+.rg-scoring .rg-scored-card {
+  opacity: 0.8;
+  transition: opacity 100ms;
+}
+.rg-scoring .rg-scored-card.rg-effect-active {
+  opacity: 1;
+}
+.rg-app .rg-scoring .rg-table-caption > span:last-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #d7c78e;
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0;
+}
+.rg-skip-scoring {
+  min-height: 28px;
+  padding: 3px 10px;
+  border: 1px solid #d7c78e55;
+  border-radius: 3px;
+  background: #455b3d66;
+  color: #dddbb7;
+  font-size: 10px;
+}
+.rg-skip-scoring:hover {
+  background: #6c765050;
+  border-color: #ead093;
+}
+.rg-app .rg-scoring .rg-tally-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center;
+}
+.rg-score-cue {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-height: 43px;
+  max-width: 100%;
+  animation: rg-effect-caption 150ms ease-out both;
+}
+.rg-score-effect-label {
+  font-size: 11px;
+  color: #e8dcaf;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.rg-score-deltas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.rg-score-deltas b {
+  padding: 2px 5px;
+  border-radius: 2px;
+  background: #091c1b66;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.rg-score-total {
+  animation: rg-total-pulse 420ms ease-out both;
+}
+.rg-scoring[data-score-phase="bank"] {
+  background: radial-gradient(ellipse at center, #c6ae6320, transparent 75%);
+}
+.rg-formula-scoring .rg-chip-value {
+  box-shadow:
+    0 3px #3b7b8b,
+    0 0 12px #78b5cb25;
+}
+.rg-formula-scoring .rg-mult-value {
+  box-shadow:
+    0 3px #854e3e,
+    0 0 12px #d8836825;
+}
+.rg-layout[data-scoring="true"] .rg-progress i {
+  transition: width 600ms cubic-bezier(0.2, 0.7, 0.1, 1);
+}
+.rg-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+@keyframes rg-effect-bump {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0);
+  }
+  30% {
+    transform: translateY(-6px) rotate(-2deg) scale(1.035);
+  }
+  65% {
+    transform: translateY(-2px) rotate(1deg);
+  }
+}
+@keyframes rg-effect-caption {
+  from {
+    opacity: 0.35;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes rg-total-pulse {
+  35% {
+    transform: scale(1.05);
+    color: #fff0b2;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@container rg-played (max-height: 130px) {
+  .rg-played-content {
+    --result-width: clamp(104px, 32cqw, 210px);
+    --result-gap: clamp(10px, 2cqw, 20px);
+    --played-gap: clamp(2px, 0.8cqw, 7px);
+  }
+  .rg-app .rg-last-result {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 3px 7px;
+  }
+  .rg-app .rg-last-result > span {
+    font-size: 10px;
+  }
+  .rg-app .rg-last-result > strong {
+    margin: 0;
+    font-size: clamp(18px, 22cqh, 27px);
+    line-height: 1.1;
+  }
+  .rg-app .rg-last-result button {
+    font-size: 9px;
+  }
+  .rg-app .rg-trace-expanded {
+    display: none;
+  }
+  .rg-app .rg-trace-compact {
+    display: inline;
+  }
+  .rg-app .rg-scoring .rg-tally-result {
+    grid-template-columns: auto auto;
+    gap: 3px 7px;
+  }
+  .rg-app .rg-tally-result > span {
+    font-size: 10px;
+    align-self: center;
+  }
+  .rg-score-cue {
+    grid-column: 1 / -1;
+    min-height: 26px;
+    gap: 2px;
+  }
+  .rg-score-effect-label {
+    font-size: 9px;
+    line-height: 1.2;
+  }
+  .rg-score-deltas b {
+    font-size: 9px;
+    padding: 1px 4px;
+  }
+  .rg-skip-scoring {
+    min-height: 22px;
+    padding: 2px 8px;
+  }
+}
+@container rg-played (max-height: 65px) {
+  .rg-played-content {
+    --result-width: clamp(128px, 36cqw, 210px);
+    --played-clearance: 2px;
+    --played-card: min(
+      48px,
+      calc((100cqh - var(--played-clearance)) / 1.5),
+      calc(
+        (
+            100cqw - var(--result-width) - var(--result-gap) -
+              (var(--played-count) - 1) * var(--played-gap)
+          ) /
+          var(--played-count)
+      )
+    );
+  }
+  .rg-scoring .rg-played-content {
+    --played-clearance: 12px;
+  }
+  .rg-app .rg-last-result > strong {
+    font-size: clamp(16px, 32cqh, 22px);
+  }
+  .rg-app .rg-scoring .rg-tally-result {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 2px 7px;
+  }
+  .rg-score-cue {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    flex-basis: 100%;
+    min-height: 12px;
+    gap: 3px;
+  }
+  .rg-score-deltas {
+    gap: 3px;
+  }
+  .rg-score-deltas b {
+    font-size: 8px;
+    padding: 1px 3px;
+  }
+  .rg-skip-scoring {
+    min-height: 20px;
+    padding: 1px 8px;
+  }
+}
+/* Tall, narrow tables give the entire card row the width above the score. */
+@container rg-played (max-width: 520px) and (min-height: 170px) {
+  .rg-played-content {
+    --played-gap: clamp(3px, 1.2cqw, 7px);
+    --played-card: min(
+      100px,
+      calc((100cqh - 94px) / 1.5),
+      calc(
+        (100cqw - 8px - (var(--played-count) - 1) * var(--played-gap)) /
+          max(4.5, var(--played-count))
+      )
+    );
+    flex-direction: column;
+    gap: 10px;
+  }
+  .rg-app .rg-last-result,
+  .rg-app .rg-scoring .rg-tally-result {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    max-width: 100%;
+  }
+  .rg-app .rg-last-result > strong {
+    font-size: clamp(23px, 9cqw, 34px);
+    margin: 0;
+  }
+  .rg-score-cue {
+    flex-basis: 100%;
+    min-height: 32px;
+    align-items: center;
+    gap: 2px;
+  }
+  .rg-score-deltas {
+    justify-content: center;
+  }
+}
+@container rg-board (max-height: 330px) {
+  .rg-skip-scoring {
+    min-height: 20px;
+    padding: 1px 8px;
+  }
+}
+.rg-reduced-motion .rg-triggering,
+.rg-reduced-motion .rg-score-cue,
+.rg-reduced-motion .rg-score-total {
+  animation: none;
+}
+.rg-reduced-motion .rg-layout[data-scoring="true"] .rg-progress i {
+  transition: none;
+}
