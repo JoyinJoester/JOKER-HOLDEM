@@ -488,6 +488,8 @@ try {
       ],
       { screenshot },
     );
+    if (await page.locator(".rg-menu-toggle").isVisible())
+      await page.locator(".rg-menu-toggle").click();
     await page.getByRole("button", { name: /^新的一局/ }).click();
     await fit(
       `resume-${label}`,

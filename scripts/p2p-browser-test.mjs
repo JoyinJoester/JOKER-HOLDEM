@@ -524,6 +524,7 @@ try {
   check("No runtime or asset errors");
   console.log(`\n${checks.length} serverless multiplayer checks passed.`);
 } catch (error) {
+  console.error("Multiplayer check failed:", error.message);
   for (let i = 0; i < pages.length; i++) {
     await pages[i]
       .screenshot({ path: `test-results/p2p/failure-${i}.png` })
@@ -533,14 +534,18 @@ try {
         player: i,
         text: (await pages[i].locator("body").innerText()).slice(-1800),
         rtc: await pages[i].evaluate(() =>
-          window.__peerConnections.map((p) => ({
-            state: p.connectionState,
-            ice: p.iceConnectionState,
-            gathering: p.iceGatheringState,
-            candidates: (p.localDescription?.sdp.match(/a=candidate:/g) ?? [])
-              .length,
-            remote: p.remoteDescription?.type,
-          })),
+          window.__peerConnections.map((p) =>
+            p.connectionState === "closed"
+              ? { state: "closed" }
+              : {
+                  state: p.connectionState,
+                  ice: p.iceConnectionState,
+                  gathering: p.iceGatheringState,
+                  candidates: (p.localDescription?.sdp.match(/a=candidate:/g) ?? [])
+                    .length,
+                  remote: p.remoteDescription?.type,
+                },
+          ),
         ),
         trace: await pages[i].evaluate(() => window.__peerTrace.slice(-80)),
       }),

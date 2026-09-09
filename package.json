@@ -11,12 +11,13 @@
     "preview": "tsx server/index.ts",
     "preview:web": "vite preview --host 127.0.0.1",
     "test": "vitest run",
-    "test:browser": "npm run test:browser:p2p && npm run test:browser:holdem && npm run test:browser:balatro && npm run test:browser:scoring && npm run test:browser:viewport",
+    "test:browser": "npm run test:browser:p2p && npm run test:browser:holdem && npm run test:browser:balatro && npm run test:browser:scoring && npm run test:browser:mobile && npm run test:browser:viewport",
     "test:browser:p2p": "node scripts/p2p-browser-test.mjs",
     "test:browser:holdem": "node scripts/browser-test.mjs && node --import tsx scripts/modes-browser-test.mjs",
     "test:browser:modes": "node --import tsx scripts/modes-browser-test.mjs",
     "test:browser:balatro": "node --import tsx scripts/balatro-browser-test.mjs",
     "test:browser:scoring": "node --import tsx scripts/scoring-browser-test.mjs",
+    "test:browser:mobile": "node --import tsx scripts/mobile-balatro-test.mjs",
     "test:browser:viewport": "node --import tsx scripts/viewport-browser-test.mjs"
   },
   "dependencies": {

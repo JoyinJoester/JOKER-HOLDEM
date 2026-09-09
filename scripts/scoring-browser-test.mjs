@@ -360,6 +360,8 @@ try {
     await page.clock.runFor(40);
     await page.keyboard.press("1");
     await page.keyboard.press("Enter");
+    if (await page.locator(".rg-menu-toggle").isVisible())
+      await page.locator(".rg-menu-toggle").click();
     await page.getByRole("button", { name: /^新的一局/ }).click();
     await page.locator("#rg-seed").fill("SCORING-NEW");
     await page.locator(".rg-start-run").click();

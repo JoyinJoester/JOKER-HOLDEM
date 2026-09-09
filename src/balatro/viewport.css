@@ -837,7 +837,8 @@
   padding: 8px 12px;
 }
 
-@media (max-width: 899px) and (min-height: 501px) {
+@media (max-width: 899px) and (min-height: 501px),
+  (max-width: 600px) and (orientation: portrait) {
   .rg-app .rg-shell {
     gap: 6px;
     padding-left: max(8px, env(safe-area-inset-left));

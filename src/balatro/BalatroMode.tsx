@@ -28,6 +28,7 @@ import type { RunAction, RunConfig } from "./types";
 import "./balatro.css";
 import "./viewport.css";
 import "./scoring.css";
+import "./mobile.css";
 
 type Modal =
   | "setup"
@@ -38,6 +39,7 @@ type Modal =
   | "settings"
   | "trace"
   | "history"
+  | "menu"
   | Inspect
   | null;
 
@@ -199,6 +201,7 @@ export default function BalatroMode({
             settings: "游戏设置",
             trace: "这一手，如何得分",
             history: "冒险记录",
+            menu: "闯关菜单",
           } as Record<string, string>
         )[modal ?? ""] ?? "");
 
@@ -223,7 +226,7 @@ export default function BalatroMode({
             </div>
           </div>
           <nav className="rg-header-actions" aria-label="闯关模式菜单">
-            <button className="rg-nav-button" onClick={onHome}>
+            <button className="rg-nav-button rg-home-button" onClick={onHome}>
               <span>←</span> 游戏大厅
             </button>
             <button
@@ -248,7 +251,13 @@ export default function BalatroMode({
               <Icon name={settings.sound ? "sound" : "muted"} />
             </button>
             <button
-              className="rg-icon-button"
+              className="rg-nav-button rg-menu-toggle"
+              onClick={() => setModal("menu")}
+            >
+              菜单
+            </button>
+            <button
+              className="rg-icon-button rg-settings-toggle"
               aria-label="游戏设置"
               onClick={() => setModal("settings")}
             >
@@ -359,6 +368,25 @@ export default function BalatroMode({
             typeof modal === "string" ? modal : "",
           )}
         >
+          {modal === "menu" && (
+            <nav className="rg-mobile-tools" aria-label="闯关功能">
+              <button onClick={() => setModal("hands")}>牌型速查 ↗</button>
+              <button disabled={!run} onClick={() => setModal("deck")}>
+                查看牌组{run ? ` · ${run.deck.length} 张` : ""}
+              </button>
+              <button
+                disabled={!run?.lastHand || busy}
+                onClick={() => setModal("trace")}
+              >
+                计分明细 ↗
+              </button>
+              <button onClick={() => setModal("setup")}>
+                新的一局 ↻
+              </button>
+              <button onClick={() => setModal("collection")}>构筑图鉴 ↗</button>
+              <button onClick={() => setModal("rules")}>玩法说明 ↗</button>
+            </nav>
+          )}
           {typeof modal === "object" && run && (
             <InspectContent run={run} inspect={modal} act={act} />
           )}

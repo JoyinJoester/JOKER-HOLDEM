@@ -513,6 +513,7 @@ try {
     ),
   );
   await phone.keyboard.press("Escape");
+  await phone.locator(".rg-menu-toggle").tap();
   await phone.getByRole("button", { name: /^查看牌组/ }).tap();
   check(
     "Deck reference lists the permanent deck",

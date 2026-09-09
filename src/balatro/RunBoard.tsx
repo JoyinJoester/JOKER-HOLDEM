@@ -534,6 +534,7 @@ export function HandArea({
   const selected = s.hand.filter((id) => s.selected.includes(id));
   const focus = s.deck.find((c) => c.uid === s.selected.at(-1));
   const focusIndex = focus ? s.hand.indexOf(focus.uid) : -1;
+  const [detailOpen, setDetailOpen] = useState(false);
   return (
     <section
       className={`rg-hand-area ${pack ? "rg-pack-hand" : ""}`}
@@ -541,10 +542,22 @@ export function HandArea({
     >
       <div className="rg-hand-toolbar">
         <span>
-          {pack ? "选择要改造的手牌" : "你的手牌"}{" "}
+          {pack ? "改造手牌" : "你的手牌"}{" "}
           <b>
             {s.hand.length}/{handSize(s)}
           </b>
+          {!pack && (
+            <>
+              <small className="rg-hand-deck-count">
+                {" "}
+                · 牌堆 {s.drawPile.length}
+              </small>
+              <small className="rg-hand-selected-count">
+                {" "}
+                · 选 {selected.length}/5
+              </small>
+            </>
+          )}
         </span>
         <div>
           <span>排序</span>
@@ -602,9 +615,14 @@ export function HandArea({
       <div className="rg-selected-note">
         {focus ? (
           <>
-            <span>
+            <button
+              className="rg-selected-description"
+              aria-label="查看选中手牌详情"
+              disabled={busy}
+              onClick={() => setDetailOpen(true)}
+            >
               <b>{cardName(focus)}</b> · {cardDetails(focus)}
-            </span>
+            </button>
             <div className="rg-card-order">
               <button
                 disabled={busy || focusIndex === 0}
@@ -660,6 +678,18 @@ export function HandArea({
           <span>♠</span>牌堆剩余 <b>{s.drawPile.length}</b> / {s.deck.length}
           <small>出牌、弃牌后自动补牌</small>
         </div>
+      )}
+      {detailOpen && focus && (
+        <Dialog
+          title={cardName(focus)}
+          eyebrow="你的手牌"
+          onClose={() => setDetailOpen(false)}
+        >
+          <div className="rg-selected-card-detail">
+            <RunCardFace card={focus} />
+            <p>{cardDetails(focus)}</p>
+          </div>
+        </Dialog>
       )}
     </section>
   );
