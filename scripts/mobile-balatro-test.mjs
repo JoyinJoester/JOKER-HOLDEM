@@ -67,8 +67,11 @@ async function load(page, state) {
       ),
     state,
   );
-  await page.goto(site.url + "#/balatro", { waitUntil: "domcontentloaded" });
-  await page.reload({ waitUntil: "domcontentloaded" });
+  // Let the first route transition finish loading its lazy CSS before any reload.
+  if (new URL(page.url()).hash === "#/balatro")
+    await page.reload({ waitUntil: "domcontentloaded" });
+  else
+    await page.goto(site.url + "#/balatro", { waitUntil: "domcontentloaded" });
   await page.locator(".rg-layout").waitFor();
   await page.evaluate(() => document.fonts.ready);
 }
