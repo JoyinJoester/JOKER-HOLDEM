@@ -87,13 +87,7 @@ export class PeerNetwork {
   private local: LocalSocket | null = null;
   private links = new Map<string, Link>();
   private pendingId: string | null = null;
-  private requests = new Map<
-    number,
-    {
-      resolve: (reply: ServerReply) => void;
-      timer: ReturnType<typeof setTimeout>;
-    }
-  >();
+  private requests = new Map<number, (reply: ServerReply) => void>();
   private requestId = 0;
   private generation = 0;
   private localAddress = "";
@@ -212,8 +206,7 @@ export class PeerNetwork {
     }
   }
   private rejectRequests() {
-    for (const { resolve, timer } of this.requests.values()) {
-      clearTimeout(timer);
+    for (const resolve of this.requests.values()) {
       resolve({ ok: false, error: "连接已断开，操作没有确认。" });
     }
     this.requests.clear();
@@ -334,12 +327,7 @@ export class PeerNetwork {
         const packet = parsePacket(data);
         if (packet.t === "event") this.onEvent(packet.event, packet.data);
         else if (packet.t === "reply") {
-          const pending = this.requests.get(packet.id);
-          if (pending) {
-            clearTimeout(pending.timer);
-            this.requests.delete(packet.id);
-            pending.resolve(packet.reply);
-          }
+          this.requests.get(packet.id)?.(packet.reply);
         } else throw new Error("Invalid direction");
       } catch {
         this.drop(link, "收到无法识别的牌桌数据，请更新网页后重新邀请。");
@@ -383,18 +371,41 @@ export class PeerNetwork {
       return { ok: false, error: "还没有连接到房主。" };
     const id = ++this.requestId;
     return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        this.requests.delete(id);
-        resolve({ ok: false, error: "操作没有得到确认，请检查与房主的连接。" });
-      }, 8000);
-      this.requests.set(id, { resolve, timer });
-      try {
-        this.send(link, { t: "request", id, event, payload });
-      } catch {
+      let retryTimer: ReturnType<typeof setTimeout> | undefined;
+      const finish = (reply: ServerReply) => {
+        if (!this.requests.delete(id)) return;
         clearTimeout(timer);
-        this.requests.delete(id);
-        resolve({ ok: false, error: "操作发送失败，请检查连接。" });
-      }
+        clearTimeout(retryTimer);
+        resolve(reply);
+      };
+      const timer = setTimeout(
+        () =>
+          finish({
+            ok: false,
+            error: "操作没有得到确认，请检查与房主的连接。",
+          }),
+        8000,
+      );
+      this.requests.set(id, finish);
+      const packet: Packet = { t: "request", id, event, payload };
+      // An open channel can still miss the first handshake. Reuse the request ID
+      // so the host returns its cached reply without allocating a second seat.
+      const delays = ["room:join", "room:resume"].includes(event)
+        ? [1000, 2000, 4000]
+        : [];
+      const transmit = () => {
+        if (!this.requests.has(id)) return;
+        try {
+          this.send(link, packet);
+        } catch {
+          finish({ ok: false, error: "操作发送失败，请检查连接。" });
+          return;
+        }
+        const delay = delays.shift();
+        if (delay !== undefined && this.requests.has(id))
+          retryTimer = setTimeout(transmit, delay);
+      };
+      transmit();
     });
   }
   private localRequest(

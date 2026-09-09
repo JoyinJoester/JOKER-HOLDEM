@@ -39,7 +39,7 @@ async function player(name, url = site.url, engine = browser, options = {}) {
   });
   contexts.push(context);
   await context.addInitScript(
-    ({ rejectMdns }) => {
+    ({ rejectMdns, dropFirstHandshake }) => {
       localStorage.setItem(
         "joker-holdem.settings.v1",
         JSON.stringify({
@@ -77,7 +77,24 @@ async function player(name, url = site.url, engine = browser, options = {}) {
           }
         };
         const send = channel.send.bind(channel);
+        let handshakeDropped = false;
         channel.send = (data) => {
+          let packet;
+          try {
+            packet = JSON.parse(data);
+          } catch {
+            /* Non-JSON probes still reach the actual transport. */
+          }
+          if (
+            dropFirstHandshake &&
+            !handshakeDropped &&
+            packet?.t === "request" &&
+            ["room:join", "room:resume"].includes(packet.event)
+          ) {
+            handshakeDropped = true;
+            trace("drop", data);
+            return;
+          }
           trace("send", data);
           return send(data);
         };
@@ -122,7 +139,10 @@ async function player(name, url = site.url, engine = browser, options = {}) {
         }
       };
     },
-    { rejectMdns: !!options.rejectMdns },
+    {
+      rejectMdns: !!options.rejectMdns,
+      dropFirstHandshake: !!options.dropFirstHandshake,
+    },
   );
   const page = await context.newPage();
   pages.push(page);
@@ -206,7 +226,30 @@ async function connectGuest(host, name, engine = browser, options = {}) {
     .locator('[data-peer-status="connected"]')
     .waitFor({ timeout: 35_000 });
   await host.locator(".peer-roster").getByText(name, { exact: true }).waitFor();
+  if (options.dropFirstHandshake)
+    await checkHandshakeRetry(
+      guest,
+      "room:join",
+      `${name}: an unconfirmed join recovers without another seat`,
+    );
   return guest;
+}
+async function checkHandshakeRetry(page, event, label) {
+  const trace = await page.evaluate(() => window.__peerTrace);
+  const first = trace.find(
+    (entry) => entry.direction === "drop" && entry.event === event,
+  );
+  assert.ok(first, "The initial handshake was withheld by the test transport");
+  assert.ok(
+    trace.some(
+      (entry) =>
+        entry.direction === "send" &&
+        entry.event === event &&
+        entry.id === first.id,
+    ),
+    "Recovery reuses the same request ID",
+  );
+  check(label);
 }
 const snapshot = (page) =>
   page.evaluate(
@@ -310,7 +353,9 @@ try {
       window.__peerConnections.every((p) => p.connectionState === "closed"),
     ),
   );
-  const guest = await connectGuest(host, "朋友一");
+  const guest = await connectGuest(host, "朋友一", browser, {
+    dropFirstHandshake: true,
+  });
   check(
     "Two independent browser sessions connect by exchanging an invitation and answer",
   );
@@ -375,6 +420,11 @@ try {
   );
   check(
     "A refreshed guest reconnects to the original seat and live hand using a new invitation",
+  );
+  await checkHandshakeRetry(
+    guest,
+    "room:resume",
+    "An unconfirmed resume recovers the original session",
   );
   await closeTable(host);
   await guest.locator('[data-peer-status="disconnected"]').waitFor();
@@ -448,7 +498,9 @@ try {
   }
   if (alternate) {
     const crossHost = await createHost();
-    const crossGuest = await connectGuest(crossHost, "Firefox玩家", alternate);
+    const crossGuest = await connectGuest(crossHost, "Firefox玩家", alternate, {
+      dropFirstHandshake: true,
+    });
     await crossHost
       .getByRole("button", { name: "开始对局", exact: true })
       .click();
@@ -541,8 +593,9 @@ try {
                   state: p.connectionState,
                   ice: p.iceConnectionState,
                   gathering: p.iceGatheringState,
-                  candidates: (p.localDescription?.sdp.match(/a=candidate:/g) ?? [])
-                    .length,
+                  candidates: (
+                    p.localDescription?.sdp.match(/a=candidate:/g) ?? []
+                  ).length,
                   remote: p.remoteDescription?.type,
                 },
           ),

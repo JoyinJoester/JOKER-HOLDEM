@@ -16,8 +16,14 @@ class Channel {
   partner: Channel | null = null;
   sent: Packet[] = [];
   silence = false;
+  dropNext: Packet["t"] | null = null;
   send(data: string) {
-    this.sent.push(JSON.parse(data));
+    const packet: Packet = JSON.parse(data);
+    this.sent.push(packet);
+    if (this.dropNext === packet.t) {
+      this.dropNext = null;
+      return;
+    }
     if (!this.silence) this.partner?.onmessage?.({ data });
   }
   close() {
@@ -118,6 +124,7 @@ async function exchange(host: PeerNetwork, guest: PeerNetwork) {
   expect(await host.accept(guest.getSnapshot().answer)).toBe(true);
   const [sender, receiver] = Connection.all.slice(-2).map((p) => p.channel!);
   return {
+    sender,
     receiver,
     open(guestFirst = false) {
       sender.readyState = receiver.readyState = "open";
@@ -151,6 +158,75 @@ describe("Peer connection handshake and seat recovery", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(guest.getSnapshot().status).toBe("connected");
     expect(owner.getSnapshot().room?.members).toHaveLength(2);
+  });
+
+  it("recovers an unanswered initial join without occupying another seat", async () => {
+    const owner = await host();
+    const guest = client();
+    const link = await exchange(owner, guest);
+    link.receiver.dropNext = "request";
+    link.open(true);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(guest.getSnapshot().status).toBe("connected");
+    expect(owner.getSnapshot().room?.members).toHaveLength(2);
+    const requests = link.receiver.sent.filter((p) => p.t === "request");
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual(requests[0]);
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(link.receiver.sent).toHaveLength(2);
+  });
+
+  it("recovers a lost resume reply using the same seat and committed hand", async () => {
+    const { owner, session } = await playing();
+    const hand = owner.getSnapshot().room!.game!;
+    const guest = client();
+    const link = await exchange(owner, guest);
+    link.sender.dropNext = "reply";
+    link.open();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(guest.getSnapshot().status).toBe("connected");
+    expect(guest.getSnapshot().session).toEqual(session);
+    expect(owner.getSnapshot().room?.members).toHaveLength(2);
+    expect(owner.getSnapshot().room?.game).toEqual(hand);
+    const replies = link.sender.sent.filter((p) => p.t === "reply");
+    expect(replies).toHaveLength(2);
+    expect(replies[1]).toEqual(replies[0]);
+    expect(
+      guest.getSnapshot().room?.game?.players[session.seat].cards,
+    ).toHaveLength(2);
+  });
+
+  it("stops handshake retries when the guest cancels the connection", async () => {
+    const owner = await host();
+    const guest = client();
+    const link = await exchange(owner, guest);
+    link.receiver.silence = true;
+    link.open();
+    guest.stop();
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(link.receiver.sent).toHaveLength(1);
+    expect(guest.getSnapshot().status).toBe("idle");
+    expect(owner.getSnapshot().room?.members).toHaveLength(1);
+  });
+
+  it("does not automatically repeat an unconfirmed game action", async () => {
+    const owner = await host();
+    const guest = client();
+    const link = await exchange(owner, guest);
+    link.open();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await owner.command("game:start")).toBe(true);
+    const hand = owner.getSnapshot().room!.game!;
+    link.receiver.silence = true;
+    const action = guest.command("game:action", { type: "fold" });
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(await action).toBe(false);
+    expect(owner.getSnapshot().room?.game).toEqual(hand);
+    expect(
+      link.receiver.sent.filter(
+        (p) => p.t === "request" && p.event === "game:action",
+      ),
+    ).toHaveLength(1);
   });
 
   it("restores the original seat and private cards after a guest refresh", async () => {
@@ -201,9 +277,12 @@ describe("Peer connection handshake and seat recovery", () => {
     await vi.advanceTimersByTimeAsync(8000);
     expect(guest.getSnapshot().status).toBe("disconnected");
     expect(guest.getSnapshot().error).toContain("操作没有得到确认");
-    expect(
-      link.receiver.sent.filter((p) => p.t === "request").map((p) => p.event),
-    ).toEqual(["room:resume"]);
+    const requests = link.receiver.sent.filter((p) => p.t === "request");
+    expect(requests).toHaveLength(4);
+    expect(new Set(requests.map((p) => p.event))).toEqual(
+      new Set(["room:resume"]),
+    );
+    expect(new Set(requests.map((p) => p.id)).size).toBe(1);
     expect(owner.getSnapshot().room?.members).toHaveLength(2);
   });
 });

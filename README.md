@@ -163,7 +163,7 @@ npm run test:browser
 
 浏览器测试默认使用本机 Chrome，包含桌面 / 手机大厅、2–6 人牌桌、人机完整牌局、四模式与商店操作、六个独立浏览器会话联机、刷新恢复和本地服务模式的房主移交，以及闯关模式的出牌、弃牌、商店、开包、图鉴、存档、胜负和触屏操作。`npm run test:browser:holdem` 单独检查德州，`npm run test:browser:modes` 单独检查多模式流程，`npm run test:browser:balatro` 单独检查闯关。
 
-`npm run test:browser:p2p` 使用只提供文件的临时静态站点，验证真正的 WebRTC 连接、六人底牌隔离、错误应答拒绝、取消邀请、朋友刷新后重连、房主关闭、多模式结算及移动端邀请界面，并确认不会请求牌桌 API、Socket.IO 或 TURN 中转。额外测试拒绝隐藏 mDNS 地址的浏览器，确认显式 Wi-Fi IPv4 仍能联机与结算，并拒绝将代理虚拟网卡地址作为 Wi-Fi 地址。设置 `P2P_CROSS_BROWSER=1` 可额外验证 Chrome / Chromium 与 Firefox 互通；设置 `P2P_SITE_URL` 可在已部署的网站运行相同检查。CI 安装 Playwright Chromium / Firefox，并设置 `BROWSER_CHANNEL=chromium`。这些是独立浏览器会话及网络限制模拟，不能替代真实手机与路由器组合的验证。
+`npm run test:browser:p2p` 使用只提供文件的临时静态站点，验证真正的 WebRTC 连接、六人底牌隔离、错误应答拒绝、取消邀请、朋友刷新后重连、首次入座／恢复请求未送达时的有限重试、房主关闭、多模式结算及移动端邀请界面，并确认不会请求牌桌 API、Socket.IO 或 TURN 中转。额外测试拒绝隐藏 mDNS 地址的浏览器，确认显式 Wi-Fi IPv4 仍能联机与结算，并拒绝将代理虚拟网卡地址作为 Wi-Fi 地址。设置 `P2P_CROSS_BROWSER=1` 可额外验证 Chrome / Chromium 与 Firefox 互通；设置 `P2P_SITE_URL` 可在已部署的网站运行相同检查。CI 安装 Playwright Chromium / Firefox，并设置 `BROWSER_CHANNEL=chromium`。这些是独立浏览器会话及网络限制模拟，不能替代真实手机与路由器组合的验证。
 
 `npm run test:browser:scoring` 检查实际计分时序、数字累加、卡牌与小丑高亮、阻止重复出牌、动画完成后结算、快速模式、减少动态效果、跳过与刷新恢复，以及不同尺寸下动画内容是否完整可见。
 
