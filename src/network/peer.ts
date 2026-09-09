@@ -274,16 +274,14 @@ export class PeerNetwork {
   }
   private hostChannel(link: Link, channel: RTCDataChannel) {
     link.channel = channel;
-    channel.onopen = () => {
-      if (!this.links.has(link.id)) return;
-      link.socket = this.bus!.connect(link.id, (event, data) => {
-        try {
-          this.send(link, { t: "event", event, data });
-        } catch {
-          this.drop(link);
-        }
-      });
-    };
+    // Prepare the receiver before either browser can send its first request.
+    link.socket = this.bus!.connect(link.id, (event, data) => {
+      try {
+        this.send(link, { t: "event", event, data });
+      } catch {
+        this.drop(link);
+      }
+    });
     channel.onmessage = ({ data }) => {
       if (!link.socket || !this.links.has(link.id)) return;
       try {
@@ -351,22 +349,13 @@ export class PeerNetwork {
       if (!this.links.has(link.id)) return;
       this.update({ status: "connecting" });
       const saved = readSession();
-      let reply =
+      const reply =
         saved?.code === link.signal.room
           ? await this.remoteRequest("room:resume", saved)
           : await this.remoteRequest("room:join", {
               name,
               code: link.signal.room,
             });
-      if (
-        !reply.ok &&
-        saved?.code === link.signal.room &&
-        this.links.has(link.id)
-      )
-        reply = await this.remoteRequest("room:join", {
-          name,
-          code: link.signal.room,
-        });
       if (!this.links.has(link.id)) return;
       if (!reply.ok || !reply.session) {
         this.drop(link, reply.error ?? "无法入座，请重新邀请。");

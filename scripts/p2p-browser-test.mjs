@@ -53,9 +53,44 @@ async function player(name, url = site.url, engine = browser, options = {}) {
       window.__peerMessages = [];
       window.__peerConnections = [];
       window.__iceConfigs = [];
+      window.__peerTrace = [];
       const Native = window.RTCPeerConnection;
-      const observe = (channel) => {
+      const observe = (channel, peer) => {
+        const connection = window.__peerConnections.indexOf(peer);
+        const trace = (direction, raw) => {
+          try {
+            const packet = JSON.parse(raw);
+            window.__peerTrace.push({
+              at: Math.round(performance.now()),
+              connection,
+              direction,
+              type: packet.t,
+              id: packet.id,
+              event: packet.event,
+              ok: packet.reply?.ok,
+              error: packet.reply?.error,
+              hasSession: !!packet.reply?.session,
+              hasToken: typeof packet.payload?.token === "string",
+            });
+          } catch {
+            /* Never include raw packets or credentials in CI diagnostics. */
+          }
+        };
+        const send = channel.send.bind(channel);
+        channel.send = (data) => {
+          trace("send", data);
+          return send(data);
+        };
+        for (const event of ["open", "close", "error"])
+          channel.addEventListener(event, () =>
+            window.__peerTrace.push({
+              at: Math.round(performance.now()),
+              connection,
+              channel: event,
+            }),
+          );
         channel.addEventListener("message", ({ data }) => {
+          trace("receive", data);
           try {
             window.__peerMessages.push(JSON.parse(data));
           } catch {
@@ -69,12 +104,12 @@ async function player(name, url = site.url, engine = browser, options = {}) {
           window.__peerConnections.push(this);
           window.__iceConfigs.push(this.getConfiguration());
           this.addEventListener("datachannel", ({ channel }) =>
-            observe(channel),
+            observe(channel, this),
           );
         }
         createDataChannel(...args) {
           const channel = super.createDataChannel(...args);
-          observe(channel);
+          observe(channel, this);
           return channel;
         }
         setRemoteDescription(description) {
@@ -507,6 +542,7 @@ try {
             remote: p.remoteDescription?.type,
           })),
         ),
+        trace: await pages[i].evaluate(() => window.__peerTrace.slice(-80)),
       }),
     );
   }
