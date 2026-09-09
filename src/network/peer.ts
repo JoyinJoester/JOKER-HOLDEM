@@ -4,6 +4,15 @@ import { installRooms } from "./rooms";
 import { LocalRoomServer, type LocalSocket } from "./transport";
 import { randomHex } from "./random";
 import {
+  ICE_SERVERS,
+  checkLanAddress,
+  connectionFailure,
+  connectionIssue,
+  gatherCandidates,
+  withLanAddress,
+  type ConnectionIssue,
+} from "./connectivity";
+import {
   decodeSignal,
   encodeSignal,
   SIGNAL_TTL,
@@ -36,6 +45,8 @@ export interface PeerState {
   offer: string;
   answer: string;
   expires: number;
+  localAddress: string;
+  issue: ConnectionIssue | null;
 }
 interface Link {
   id: string;
@@ -48,6 +59,7 @@ interface Link {
   timer?: ReturnType<typeof setTimeout>;
   disconnected: boolean;
   replies: Map<number, ServerReply>;
+  localAddress: string;
 }
 const SESSION_KEY = "joker-holdem.peer.session.v1";
 const readSession = (): RoomSession | null => {
@@ -67,38 +79,6 @@ const saveSession = (session: RoomSession | null) => {
   }
 };
 
-async function gather(
-  pc: RTCPeerConnection,
-  signal: AbortSignal,
-): Promise<string> {
-  if (signal.aborted) throw new Error("邀请已取消。");
-  if (pc.iceGatheringState !== "complete")
-    await new Promise<void>((resolve, reject) => {
-      const finish = (error?: Error) => {
-        clearTimeout(timer);
-        pc.removeEventListener("icegatheringstatechange", change);
-        signal.removeEventListener("abort", abort);
-        if (error) reject(error);
-        else resolve();
-      };
-      const change = () => {
-        if (pc.iceGatheringState === "complete") finish();
-      };
-      const abort = () => finish(new Error("邀请已取消。"));
-      const timer = setTimeout(
-        () => finish(new Error("获取局域网地址超时，请检查网络后重试。")),
-        10_000,
-      );
-      pc.addEventListener("icegatheringstatechange", change);
-      signal.addEventListener("abort", abort, { once: true });
-      change();
-    });
-  const sdp = pc.localDescription?.sdp ?? "";
-  if (!sdp.includes("a=candidate:"))
-    throw new Error("浏览器没有提供直连地址，请允许本地网络访问后重试。");
-  return sdp;
-}
-
 export class PeerNetwork {
   private state: PeerState;
   private listeners = new Set<() => void>();
@@ -116,6 +96,7 @@ export class PeerNetwork {
   >();
   private requestId = 0;
   private generation = 0;
+  private localAddress = "";
   readonly supported = typeof RTCPeerConnection !== "undefined";
   constructor() {
     this.state = this.initial();
@@ -134,6 +115,8 @@ export class PeerNetwork {
       offer: "",
       answer: "",
       expires: 0,
+      localAddress: this.localAddress,
+      issue: null,
     };
   }
   getSnapshot = () => this.state;
@@ -148,6 +131,10 @@ export class PeerNetwork {
     for (const listener of this.listeners) listener();
   }
   setError = (error: string) => this.update({ error });
+  setLocalAddress = (value: string) => {
+    this.localAddress = value;
+    this.update({ localAddress: value });
+  };
   restoreSession = () => {
     const session = readSession();
     if (this.state.role === "none" && session)
@@ -202,7 +189,7 @@ export class PeerNetwork {
   }
   private drop(link: Link, error = "") {
     if (!this.links.delete(link.id)) return;
-    link.abort.abort();
+    link.abort.abort(error ? new Error(error) : undefined);
     clearTimeout(link.timer);
     this.bus?.disconnect(link.id);
     link.pc.close();
@@ -231,8 +218,15 @@ export class PeerNetwork {
     }
     this.requests.clear();
   }
+  private failed(link: Link, reason: string) {
+    if (!this.links.has(link.id)) return;
+    const issue = connectionIssue(link.pc, reason, link.localAddress);
+    this.update({ issue });
+    this.drop(link, connectionFailure(issue));
+  }
   private makeLink(signal: Signal) {
-    const pc = new RTCPeerConnection({ iceServers: [] });
+    const localAddress = checkLanAddress(this.localAddress);
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     const link: Link = {
       id: signal.pair,
       pc,
@@ -242,6 +236,7 @@ export class PeerNetwork {
       socket: null,
       disconnected: false,
       replies: new Map(),
+      localAddress,
     };
     this.links.set(link.id, link);
     link.timer = setTimeout(
@@ -251,10 +246,7 @@ export class PeerNetwork {
     pc.onconnectionstatechange = () => {
       if (!this.links.has(link.id)) return;
       if (pc.connectionState === "failed" || pc.connectionState === "closed") {
-        this.drop(
-          link,
-          "直连未成功或已中断，请确认双方在同一局域网，且允许设备互访，再重新邀请。",
-        );
+        this.failed(link, "ICE 连接失败");
       } else if (pc.connectionState === "disconnected") {
         link.disconnected = true;
         link.socket?.disconnect();
@@ -265,7 +257,10 @@ export class PeerNetwork {
             error: "连接暂时中断，正在恢复…",
           });
         clearTimeout(link.timer);
-        link.timer = setTimeout(() => this.drop(link), 30_000);
+        link.timer = setTimeout(
+          () => this.failed(link, "连接中断后未恢复"),
+          30_000,
+        );
       } else if (pc.connectionState === "connected" && link.disconnected) {
         link.disconnected = false;
         clearTimeout(link.timer);
@@ -327,7 +322,7 @@ export class PeerNetwork {
       }
     };
     channel.onclose = () => this.drop(link);
-    channel.onerror = () => this.drop(link, "连接发生错误，请重新邀请。");
+    channel.onerror = () => this.failed(link, "数据通道出错");
   }
   private guestChannel(link: Link, channel: RTCDataChannel, name: string) {
     if (link.channel || channel.label !== "joker-holdem-v1") {
@@ -388,7 +383,7 @@ export class PeerNetwork {
       });
     };
     channel.onclose = () => this.drop(link);
-    channel.onerror = () => this.drop(link, "连接发生错误，请重新邀请。");
+    channel.onerror = () => this.failed(link, "数据通道出错");
   }
   private async remoteRequest(
     event: string,
@@ -479,14 +474,22 @@ export class PeerNetwork {
       };
       const link = this.makeLink(signal);
       this.pendingId = link.id;
-      this.update({ status: "preparing", offer: "", expires: signal.expires });
+      this.update({
+        status: "preparing",
+        offer: "",
+        expires: signal.expires,
+        issue: null,
+      });
       try {
         this.hostChannel(
           link,
           link.pc.createDataChannel("joker-holdem-v1", { ordered: true }),
         );
         await link.pc.setLocalDescription(await link.pc.createOffer());
-        signal.sdp = await gather(link.pc, link.abort.signal);
+        signal.sdp = withLanAddress(
+          await gatherCandidates(link.pc, link.abort.signal),
+          link.localAddress,
+        );
         if (!this.links.has(link.id)) return;
         this.update({ offer: encodeSignal(signal), status: "offer" });
       } catch (error) {
@@ -509,14 +512,7 @@ export class PeerNetwork {
       await link.pc.setRemoteDescription({ type: "answer", sdp: answer.sdp });
       this.update({ status: "connecting" });
       clearTimeout(link.timer);
-      link.timer = setTimeout(
-        () =>
-          this.drop(
-            link,
-            "直连超时，请检查同一 Wi-Fi 和本地网络权限后重新邀请。",
-          ),
-        30_000,
-      );
+      link.timer = setTimeout(() => this.failed(link, "等待连接超时"), 30_000);
     });
   join = (name: string, input: string) =>
     this.operation(async () => {
@@ -533,13 +529,17 @@ export class PeerNetwork {
         connected: false,
         answer: "",
         expires: offer.expires,
+        issue: null,
       });
       try {
         link.pc.ondatachannel = ({ channel }) =>
           this.guestChannel(link, channel, name.trim());
         await link.pc.setRemoteDescription({ type: "offer", sdp: offer.sdp });
         await link.pc.setLocalDescription(await link.pc.createAnswer());
-        const sdp = await gather(link.pc, link.abort.signal);
+        const sdp = withLanAddress(
+          await gatherCandidates(link.pc, link.abort.signal),
+          link.localAddress,
+        );
         if (!this.links.has(link.id)) return;
         this.update({
           answer: encodeSignal({ ...offer, kind: "answer", sdp }),

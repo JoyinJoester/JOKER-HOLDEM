@@ -16,6 +16,7 @@ export function usePeerNetwork(enabled: boolean) {
     ...state,
     supported: client.supported,
     setError: client.setError,
+    setLocalAddress: client.setLocalAddress,
     leave: client.leave,
     resetConnection: client.stop,
     create: client.create,

@@ -6,6 +6,7 @@ import { NetworkChoice } from "./NetworkChoice";
 import { inviteLink, MAX_SIGNAL } from "./network/signaling";
 import type { NetworkController } from "./useNetwork";
 import { Icon, Portrait } from "./visuals";
+import { PeerConnectionHelp } from "./PeerConnectionHelp";
 
 export interface LobbyProps {
   network: NetworkController;
@@ -31,6 +32,7 @@ export function PeerLobby({
   );
   const [copied, setCopied] = useState("");
   const [copyFailed, setCopyFailed] = useState(false);
+  const [help, setHelp] = useState(false);
   const copy = async (kind: string, value: string) => {
     const ok = await copyText(value);
     setCopied(ok ? kind : "");
@@ -55,9 +57,16 @@ export function PeerLobby({
           : p.status === "connected"
             ? "浏览器直连已就绪"
             : "同一 Wi-Fi · 浏览器直连"}
-        <span>DIRECT PLAY</span>
+        <button
+          className="text-button peer-help-toggle"
+          onClick={() => setHelp(!help)}
+        >
+          {help ? "返回连接" : "连接帮助"}
+        </button>
       </div>
-      {p.role === "guest" && (!room || disconnected) ? (
+      {help ? (
+        <PeerConnectionHelp peer={p} onBack={() => setHelp(false)} />
+      ) : p.role === "guest" && (!room || disconnected) ? (
         <div className="peer-guest-flow">
           {p.answer && !disconnected ? (
             <>
@@ -375,7 +384,7 @@ export function PeerLobby({
           复制未成功，请选中上方文本手动复制。
         </p>
       )}
-      {p.error && (
+      {p.error && !help && (
         <p className="inline-error" role="alert">
           {p.error}
         </p>

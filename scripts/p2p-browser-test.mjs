@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
+import { networkInterfaces } from "node:os";
 import { chromium, firefox } from "playwright";
 import { staticSite } from "./static-site.mjs";
 
@@ -30,51 +31,64 @@ const check = (label, ok = true) => {
   checks.push(label);
   console.log(`✓ ${label}`);
 };
-async function player(name, url = site.url, engine = browser) {
+async function player(name, url = site.url, engine = browser, options = {}) {
   const context = await engine.newContext({
     viewport: { width: 1280, height: 800 },
     reducedMotion: "reduce",
     hasTouch: engine === browser,
   });
   contexts.push(context);
-  await context.addInitScript(() => {
-    localStorage.setItem(
-      "joker-holdem.settings.v1",
-      JSON.stringify({
-        sound: false,
-        volume: 0,
-        crt: true,
-        fast: true,
-        difficulty: "normal",
-      }),
-    );
-    window.__peerMessages = [];
-    window.__peerConnections = [];
-    window.__iceConfigs = [];
-    const Native = window.RTCPeerConnection;
-    const observe = (channel) => {
-      channel.addEventListener("message", ({ data }) => {
-        try {
-          window.__peerMessages.push(JSON.parse(data));
-        } catch {
-          /* Malformed probes are tested separately. */
+  await context.addInitScript(
+    ({ rejectMdns }) => {
+      localStorage.setItem(
+        "joker-holdem.settings.v1",
+        JSON.stringify({
+          sound: false,
+          volume: 0,
+          crt: true,
+          fast: true,
+          difficulty: "normal",
+        }),
+      );
+      window.__peerMessages = [];
+      window.__peerConnections = [];
+      window.__iceConfigs = [];
+      const Native = window.RTCPeerConnection;
+      const observe = (channel) => {
+        channel.addEventListener("message", ({ data }) => {
+          try {
+            window.__peerMessages.push(JSON.parse(data));
+          } catch {
+            /* Malformed probes are tested separately. */
+          }
+        });
+      };
+      window.RTCPeerConnection = class extends Native {
+        constructor(...args) {
+          super(...args);
+          window.__peerConnections.push(this);
+          window.__iceConfigs.push(this.getConfiguration());
+          this.addEventListener("datachannel", ({ channel }) =>
+            observe(channel),
+          );
         }
-      });
-    };
-    window.RTCPeerConnection = class extends Native {
-      constructor(...args) {
-        super(...args);
-        window.__peerConnections.push(this);
-        window.__iceConfigs.push(this.getConfiguration());
-        this.addEventListener("datachannel", ({ channel }) => observe(channel));
-      }
-      createDataChannel(...args) {
-        const channel = super.createDataChannel(...args);
-        observe(channel);
-        return channel;
-      }
-    };
-  });
+        createDataChannel(...args) {
+          const channel = super.createDataChannel(...args);
+          observe(channel);
+          return channel;
+        }
+        setRemoteDescription(description) {
+          if (
+            rejectMdns &&
+            /a=candidate:.*\.local /.test(description.sdp ?? "")
+          )
+            throw new Error("This test peer cannot resolve mDNS host names");
+          return super.setRemoteDescription(description);
+        }
+      };
+    },
+    { rejectMdns: !!options.rejectMdns },
+  );
   const page = await context.newPage();
   pages.push(page);
   page.on("pageerror", (e) => errors.push(e.message));
@@ -88,8 +102,13 @@ async function player(name, url = site.url, engine = browser) {
   await page.locator("#hall-nickname").fill(name);
   return page;
 }
-async function createHost(mode = "classic", seats = 2, fillBots = false) {
-  const host = await player("房主");
+async function createHost(
+  mode = "classic",
+  seats = 2,
+  fillBots = false,
+  options = {},
+) {
+  const host = await player("房主", site.url, browser, options);
   await host.getByRole("button", { name: "创建房间", exact: true }).click();
   await host.locator(`.game-mode-card.mode-${mode}`).click();
   await host
@@ -106,17 +125,27 @@ async function invite(host) {
   await host.getByTestId("peer-offer").waitFor();
   return host.getByTestId("peer-offer").inputValue();
 }
-async function connectGuest(host, name, engine = browser) {
+async function setLanAddress(page, address, fromHall = false) {
+  if (fromHall) await page.locator(".lan-button").click();
+  await page.getByRole("button", { name: "连接帮助", exact: true }).click();
+  await page.getByLabel("本机局域网 IPv4").fill(address);
+  await page.locator(".peer-connection-help > .primary-button").click();
+  if (fromHall)
+    await page.getByRole("button", { name: "关闭弹窗", exact: true }).click();
+}
+async function connectGuest(host, name, engine = browser, options = {}) {
   const url = await invite(host);
   assert.ok(
     url.startsWith(site.url + "#/?invite=JH1."),
     "Invitation keeps the Pages repository path",
   );
-  const guest = await player(name, url, engine);
+  const guest = await player(name, url, engine, options);
   assert.equal(
     await guest.locator("#hall-room-code").inputValue(),
     url.split("invite=")[1],
   );
+  if (options.localAddress)
+    await setLanAddress(guest, options.localAddress, true);
   await guest
     .getByRole("button", { name: "生成连接应答", exact: true })
     .click();
@@ -172,7 +201,7 @@ async function fit(page, label) {
         issues.push(`${selector} clips ${el.scrollHeight - el.clientHeight}px`);
     }
     for (const el of document.querySelectorAll(
-      ".peer-lobby textarea, .peer-lobby button",
+      ".peer-lobby textarea, .peer-lobby input, .peer-lobby button",
     )) {
       if (!el.checkVisibility()) continue;
       const r = el.getBoundingClientRect();
@@ -212,6 +241,22 @@ async function closeTable(host) {
 try {
   const host = await createHost();
   check("Creates a browser-hosted table on a file-only Pages subpath");
+  await host.getByRole("button", { name: "连接帮助", exact: true }).click();
+  await host.getByLabel("本机局域网 IPv4").fill("198.18.0.1");
+  check(
+    "Rejects a proxy adapter address before an invitation is generated",
+    await host.locator(".peer-connection-help > .primary-button").isDisabled(),
+  );
+  await host.getByLabel("本机局域网 IPv4").fill("");
+  for (const [width, height] of [
+    [320, 568],
+    [568, 320],
+    [1280, 800],
+  ]) {
+    await host.setViewportSize({ width, height });
+    await fit(host, `connection-help-${width}x${height}`);
+  }
+  await host.locator(".peer-connection-help > .primary-button").click();
   await invite(host);
   for (const [width, height] of [
     [320, 568],
@@ -381,11 +426,59 @@ try {
     check("Chromium and Firefox can directly play and settle a hand together");
     await closeTable(crossHost);
   }
+  const lanAddress =
+    process.env.P2P_LAN_IPV4 ??
+    Object.values(networkInterfaces())
+      .flat()
+      .find(
+        (address) =>
+          address &&
+          !address.internal &&
+          address.family === "IPv4" &&
+          /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(address.address),
+      )?.address;
+  assert.ok(
+    lanAddress,
+    "A LAN interface is available for the explicit IPv4 test",
+  );
+  const addressHost = await createHost("classic", 2, false, {
+    rejectMdns: true,
+  });
+  await setLanAddress(addressHost, lanAddress);
+  const addressGuest = await connectGuest(
+    addressHost,
+    "IPv4玩家",
+    alternate ?? browser,
+    { rejectMdns: true, localAddress: lanAddress },
+  );
+  await addressHost
+    .getByRole("button", { name: "开始对局", exact: true })
+    .click();
+  await addressGuest.waitForFunction(() =>
+    window.__peerMessages.some(
+      (m) => m.event === "room:update" && m.data?.game,
+    ),
+  );
+  await foldHand(addressHost, addressGuest);
+  check(
+    "Explicit Wi-Fi IPv4 connects and plays when neither peer can resolve hidden mDNS addresses",
+  );
+  await closeTable(addressHost);
   for (const page of pages) {
     const configs = await page.evaluate(() => window.__iceConfigs);
-    assert.ok(configs.every((c) => c.iceServers.length === 0));
+    assert.ok(
+      configs.every(
+        (c) =>
+          c.iceServers.length === 2 &&
+          c.iceServers.every((server) =>
+            [server.urls].flat().every((url) => url.startsWith("stun:")),
+          ),
+      ),
+    );
   }
-  check("Uses no signaling, STUN or TURN server");
+  check(
+    "Uses STUN only for address discovery, with no signaling or TURN relay server",
+  );
   assert.ok(
     requests.every((url) => url.startsWith(site.url)),
     "All requested resources stay under the Pages path",
